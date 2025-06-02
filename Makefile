@@ -1,4 +1,8 @@
-.PHONY: dev down rebuild build-prod run-prod clean
+.PHONY: dev down rebuild build push clean
+
+# Set default tag if not passed (e.g. `make build` will default to :latest)
+IMAGE_TAG ?= latest
+IMAGE_NAME := ghcr.io/heschmat/devops_eks_portfolio
 
 # Dev mode (hot reload via Air)
 dev:
@@ -11,13 +15,12 @@ rebuild:
 	docker compose -f docker-compose.dev.yml down
 	docker compose -f docker-compose.dev.yml up --build
 
-# Production build using multi-stage Dockerfile
-build-prod:
-	docker build -t go-static-app:prod -f Dockerfile .
+# make build IMAGE_TAG=v1
+build:
+	docker build -t $(IMAGE_NAME):$(IMAGE_TAG) -f Dockerfile .
 
-# Run the prod image
-run-prod:
-	docker run --rm -p 8080:8080 go-static-app:prod
+push:
+	docker push $(IMAGE_NAME):$(IMAGE_TAG)
 
 # Remove stopped containers and dangling images
 clean:

@@ -21,6 +21,7 @@ func main() {
 	fs := http.FileServer(http.Dir("static"))
 	http.Handle("/static/", http.StripPrefix("/static/", fs))
 
+	// App routes
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		renderTemplate(w, "home")
 	})
@@ -29,6 +30,18 @@ func main() {
 	})
 	http.HandleFunc("/cloud-devops-engineering", func(w http.ResponseWriter, r *http.Request) {
 		renderTemplate(w, "cloud-devops")
+	})
+
+	// Health check endpoints
+	http.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("ok"))
+	})
+
+	http.HandleFunc("/readyz", func(w http.ResponseWriter, r *http.Request) {
+		// If readiness involves external systems, add logic here.
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("ready"))
 	})
 
 	log.Println("Server started at http://localhost:8080")
