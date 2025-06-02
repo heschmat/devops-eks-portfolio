@@ -1,0 +1,9 @@
+tmp/
+*.log
+*.md
+.dockerignore
+Dockerfile.dev
+docker-compose.dev.yml
+.air.toml
+Makefile
+main_test.go
