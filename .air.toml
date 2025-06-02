@@ -1,0 +1,16 @@
+# .air.toml
+[build]
+  cmd = "go build -buildvcs=false -o ./tmp/main ."
+  bin = "tmp/main"
+  includeExt = ["go"]
+  excludeDir = ["tmp", "vendor"]
+  delay = 1000
+  stopOnError = true
+
+
+
+[log]
+  time = true
+
+[color]
+  main = "yellow"

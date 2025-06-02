@@ -1,0 +1,19 @@
+FROM golang:1.24
+
+WORKDIR /app
+
+# Correct module path for air
+RUN go install github.com/air-verse/air@latest
+
+# Cache go deps
+COPY go.mod ./
+RUN go mod download
+
+# App source
+COPY . .
+
+# Air config (optional)
+COPY .air.toml .
+
+# Run app with air hot reload
+CMD ["air"]
