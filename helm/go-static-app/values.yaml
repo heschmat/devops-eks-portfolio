@@ -1,0 +1,24 @@
+namespace: go-app-static
+replicaCount: 2
+appLabel: go-app-demo
+containerName: go-app-container
+containerPort: 8080
+
+image:
+  repository: ghcr.io/heschmat/devops_eks_portfolio
+  tag: v1
+  pullPolicy: Always
+
+imagePullSecret: ghcr-secret
+
+resources:
+  requests:
+    cpu: "100m"
+    memory: "64Mi"
+  limits:
+    cpu: "250m"
+    memory: "128Mi"
+
+service:
+  type: ClusterIP  # or NodePort
+  nodePort: 30080  # only used when type is NodePort
