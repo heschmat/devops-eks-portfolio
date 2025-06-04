@@ -59,7 +59,12 @@ To apply updates:
 ```bash
 helm upgrade --install go-static-app ./go-static-app \
   -n $this_namespace
+
+# to uninstall the release:
+helm uninstall go-static-app -n $this_namespace
 ```
+
+ASIDE: you can list all helm releases by `helm list --all-namespaces`
 
 ## 4. Create Image Pull Secret
 
@@ -73,12 +78,24 @@ kubectl create secret docker-registry ghcr-secret \
   --namespace $this_namespace
 ```
 
-Ensure the secret type is correct:
+Ensure the secret type is correct: `kubernetes.io/dockerconfigjson`
 
 ```bash
 kubectl get secret ghcr-secret -n $this_namespace -o yaml
 ```
 
+To view the encoded content:
+```bash
+kubectl get secret ghcr-secret -n $this_namespace -o jsonpath="{.data.\.dockerconfigjson}" | base64 --decode | jq
+
+```
+> This requires `jq` for pretty-printing JSON.
+
+You can also easily check your deployment or pod spec and look for `imagePullSecrets`:
+```bash
+kubectl get deployment <your-deployment> -n $this_namespace -o yaml | grep -A 5 imagePullSecrets
+
+```
 ## 5. (Optional) Pull Image Locally for Debugging
 
 ```bash
@@ -101,6 +118,12 @@ helm upgrade --install go-static-app ./go-static-app \
   -n $this_namespace \
   --set service.type=NodePort \
   --set service.nodePort=30080
+```
+
+```output
+NAME                        TYPE       CLUSTER-IP       EXTERNAL-IP   PORT(S)        AGE
+service/go-static-app-svc   NodePort   10.100.166.158   <none>        80:30080/TCP   42m
+
 ```
 
 Check the node external IP:
