@@ -187,7 +187,7 @@ curl http://localhost:8080
 From your local machine:
 
 ```bash
-ssh -L 8080:localhost:8080 ec2-user@<EC2_PUBLIC_IP>
+ssh -i <path/to/*.pem/key> -L 8080:localhost:8080 ubuntu@<EC2_PUBLIC_IP>
 ```
 
 Then open [http://localhost:8080](http://localhost:8080) in your browser.

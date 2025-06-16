@@ -4,6 +4,6 @@ tmp/
 .dockerignore
 Dockerfile.dev
 docker-compose.dev.yml
-.air.toml
+#.air.toml
 Makefile
 main_test.go
