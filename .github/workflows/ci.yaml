@@ -1,0 +1,179 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [main]          # Trigger only on pushes to main
+    paths-ignore:             # Skip workflow if only these paths are modified
+      - '**.md'
+      - 'README*'
+      - 'k8s/**'
+      - 'helm/**'
+  workflow_dispatch:          # Allow manual trigger
+
+env:
+  GO_VERSION: '1.23'          # Go version used across jobs
+  REGISTRY: ghcr.io           # Container registry (GitHub Container Registry)
+  REPO_NAME: ${{ github.repository }}
+  USERNAME: ${{ vars.GH_USERNAME }}
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Cache Go modules    # Speeds up dependency installs
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
+      - name: Install Staticcheck # Go linter
+        run: go install honnef.co/go/tools/cmd/staticcheck@latest
+
+      - name: Run Staticcheck
+        run: staticcheck ./...
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Cache Go modules
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
+      - name: Run Go Tests
+        run: go test ./...
+
+  docker:
+    needs: [lint, test]        # Run only after lint + tests pass
+    runs-on: ubuntu-latest
+    outputs:
+      image: ${{ steps.meta.outputs.image }}
+      ci_tag: ${{ steps.meta.outputs.ci_tag }}
+      release_tag: ${{ steps.meta.outputs.release_tag }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx # Required for multi-platform builds
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ env.USERNAME }}
+          password: ${{ secrets.GH_PAT }}
+
+      - name: Extract metadata    # Define image name and tags
+        id: meta
+        run: |
+          REPO="${REPO_NAME#*/}"
+          SHORT_SHA=$(echo "${GITHUB_SHA}" | cut -c1-7)
+          IMAGE="${{ env.REGISTRY }}/${{ env.USERNAME }}/$REPO"
+          CI_TAG="ci-${{ github.run_id }}"
+          RELEASE_TAG="${{ github.ref_name }}-$SHORT_SHA"
+          echo "image=$IMAGE" >> $GITHUB_OUTPUT
+          echo "ci_tag=$CI_TAG" >> $GITHUB_OUTPUT
+          echo "release_tag=$RELEASE_TAG" >> $GITHUB_OUTPUT
+
+      - name: Build & Push CI Image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.ci_tag }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  scan-image:
+    needs: [docker]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Scan Docker image for vulnerabilities
+        uses: aquasecurity/trivy-action@0.20.0
+        with:
+          image-ref: ${{ needs.docker.outputs.image }}:${{ needs.docker.outputs.ci_tag }}
+          format: 'table'
+          exit-code: '1'        # Fail job if HIGH/CRITICAL vulns found
+          severity: 'HIGH,CRITICAL'
+          vuln-type: 'os,library'
+
+  promote-image:
+    needs: [scan-image, docker]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ env.USERNAME }}
+          password: ${{ secrets.GH_PAT }}
+
+      - name: Pull CI image
+        run: docker pull ${{ needs.docker.outputs.image }}:${{ needs.docker.outputs.ci_tag }}
+
+      - name: Tag and Push release image
+        run: |
+          # Tag with release identifier
+          docker tag ${{ needs.docker.outputs.image }}:${{ needs.docker.outputs.ci_tag }} \
+            ${{ needs.docker.outputs.image }}:${{ needs.docker.outputs.release_tag }}
+          docker push ${{ needs.docker.outputs.image }}:${{ needs.docker.outputs.release_tag }}
+
+          # If on main branch, also push "latest"
+          if [ "${{ github.ref_name }}" = "main" ]; then
+            docker tag ${{ needs.docker.outputs.image }}:${{ needs.docker.outputs.ci_tag }} \
+              ${{ needs.docker.outputs.image }}:latest
+            docker push ${{ needs.docker.outputs.image }}:latest
+          fi
+
+  update-helm:
+    needs: [promote-image]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code (with PAT to allow push)
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GH_PAT }}
+
+      - name: Install yq   # Used for YAML manipulation
+        run: sudo apt-get update && sudo apt-get install -y yq
+
+      - name: Update image tag in values.yaml
+        run: |
+          yq e -i '.image.tag = "${{ needs.docker.outputs.release_tag }}"' helm/go-static-app/values.yaml
+
+      - name: Commit the updated values.yaml
+        run: |
+          # Commit only if file changed
+          if ! git diff --quiet helm/go-static-app/values.yaml; then
+            git config user.name "GHA bot"
+            git config user.email "actions@github.com"
+            git add helm/go-static-app/values.yaml
+            git commit -m "[ci] update image tag to ${{ needs.docker.outputs.release_tag }} (triggered by: ${{ github.actor }})"
+            git push
+          fi
