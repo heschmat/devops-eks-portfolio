@@ -1,4 +1,4 @@
-name: CI/CD Pipeline
+name: CI Pipeline
 
 on:
   push:
@@ -8,116 +8,165 @@ on:
       - 'README*'
       - 'k8s/**'
       - 'helm/**'
+      - '.github/workflows/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write   # allows GITHUB_TOKEN to push/pull images from GHCR
+
+env:
+  GO_VERSION: '1.23'
+  REGISTRY: ghcr.io
+  REPO_NAME: ${{ github.repository }}
+  USERNAME: ${{ github.repository_owner }}   # ✅ use repo owner, not actor
 
 jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Go
-        uses: actions/setup-go@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
         with:
-          go-version: '1.23'
-
-      - name: Run Go Lint
-        run: |
-          go install golang.org/x/lint/golint@latest
-          golint ./...
+          go-version: ${{ env.GO_VERSION }}
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+      - run: go install honnef.co/go/tools/cmd/staticcheck@latest
+      - run: staticcheck ./...
 
   test:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Go
-        uses: actions/setup-go@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
         with:
-          go-version: '1.23'
-
-      - name: Run Go Tests
-        run: go test ./...
+          go-version: ${{ env.GO_VERSION }}
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+      - run: go test ./...
 
   docker:
     needs: [lint, test]
     runs-on: ubuntu-latest
     outputs:
-      image_name: ${{ steps.set-env.outputs.image_name }}
-      image_tag: ${{ steps.set-env.outputs.image_tag }}
+      image: ${{ steps.meta.outputs.image }}
+      ci_tag: ${{ steps.meta.outputs.ci_tag }}
+      release_tag: ${{ steps.meta.outputs.release_tag }}
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
 
-      - name: Set image env variables (INTENTIONALLY BROKEN)
-        id: set-env
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ env.USERNAME }}
+          password: ${{ secrets.GH_PAT }}
+
+      - name: Extract metadata
+        id: meta
         run: |
-          echo "Github Actor: $GITHUB_ACTOR"
-          echo "Github Repository Owner: $GITHUB_REPOSITORY_OWNER"
-          echo "Repository: $GITHUB_REPOSITORY"
-          REPO_NAME="${GITHUB_REPOSITORY#*/}"
+          REPO="${REPO_NAME#*/}"
           SHORT_SHA=$(echo "${GITHUB_SHA}" | cut -c1-7)
+          IMAGE="${{ env.REGISTRY }}/${{ env.USERNAME }}/$REPO"
+          CI_TAG="ci-${{ github.run_id }}"
+          RELEASE_TAG="${{ github.ref_name }}-$SHORT_SHA"
+          echo "image=$IMAGE" >> $GITHUB_OUTPUT
+          echo "ci_tag=$CI_TAG" >> $GITHUB_OUTPUT
+          echo "release_tag=$RELEASE_TAG" >> $GITHUB_OUTPUT
 
-          # ❌ This is the bug: using actor instead of owner
-          IMAGE_NAME="ghcr.io/${GITHUB_ACTOR}/$REPO_NAME"
-          IMAGE_TAG="${GITHUB_REF_NAME}-$SHORT_SHA"
-
-          echo "IMAGE_NAME=$IMAGE_NAME" | tee -a $GITHUB_ENV
-          echo "IMAGE_TAG=$IMAGE_TAG" | tee -a $GITHUB_ENV
-          echo "image_name=$IMAGE_NAME" >> $GITHUB_OUTPUT
-          echo "image_tag=$IMAGE_TAG" >> $GITHUB_OUTPUT
-
-      - name: Log Docker login details
-        run: |
-          echo "Logging into ghcr.io as: ${{ vars.GH_USERNAME }}"
-          echo "Intended push target: $IMAGE_NAME:$IMAGE_TAG"
-
-      - name: Set up Docker auth for ghcr.io
-        run: echo "${{ secrets.GH_PAT }}" | docker login ghcr.io -u "${{ vars.GH_USERNAME }}" --password-stdin
-
-      - name: Build Docker Image
-        run: docker build -t $IMAGE_NAME:$IMAGE_TAG .
-
-      - name: Push Docker Image (EXPECTED TO FAIL WITH 403)
-        run: docker push $IMAGE_NAME:$IMAGE_TAG
-
+      - uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.ci_tag }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
   scan-image:
     needs: [docker]
     runs-on: ubuntu-latest
     steps:
-      - name: Login to the ghcr.io
-        run: echo "${{ secrets.GH_PAT }}" | docker login ghcr.io -u "${{ vars.GH_USERNAME }}" --password-stdin
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ env.USERNAME }}
+          password: ${{ secrets.GH_PAT }}
 
-      - name: Install Trivy
-        run: |
-          sudo apt-get install wget apt-transport-https gnupg lsb-release
-          wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
-          echo "deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main" | sudo tee -a /etc/apt/sources.list.d/trivy.list
-          sudo apt-get update
-          sudo apt-get install trivy
+      - name: Scan Docker image for vulnerabilities
+        uses: aquasecurity/trivy-action@0.20.0
+        with:
+          image-ref: ${{ needs.docker.outputs.image }}:${{ needs.docker.outputs.ci_tag }}
+          format: 'table'
+          exit-code: '1'
+          severity: 'HIGH,CRITICAL'
+          vuln-type: 'os,library'
 
-      - name: Scan Docker Image for vulnerabilities
-        run: trivy image --exit-code 1 --severity HIGH,CRITICAL ${{needs.docker.outputs.image_name}}:${{needs.docker.outputs.image_tag}}
-
-  update-helm:
-    needs: [docker]
+  promote-image:
+    needs: [scan-image, docker]
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ env.USERNAME }}
+          password: ${{ secrets.GH_PAT }}
+
+      - run: docker pull ${{ needs.docker.outputs.image }}:${{ needs.docker.outputs.ci_tag }}
+
+      - name: Tag and Push release image
+        run: |
+          docker tag ${{ needs.docker.outputs.image }}:${{ needs.docker.outputs.ci_tag }} \
+            ${{ needs.docker.outputs.image }}:${{ needs.docker.outputs.release_tag }}
+          docker push ${{ needs.docker.outputs.image }}:${{ needs.docker.outputs.release_tag }}
+
+          if [ "${{ github.ref_name }}" = "main" ]; then
+            docker tag ${{ needs.docker.outputs.image }}:${{ needs.docker.outputs.ci_tag }} \
+              ${{ needs.docker.outputs.image }}:latest
+            docker push ${{ needs.docker.outputs.image }}:latest
+          fi
+
+  update-helm:
+    needs: [promote-image]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code (with PAT so commits can trigger workflows)
         uses: actions/checkout@v4
         with:
           token: ${{ secrets.GH_PAT }}
 
+      - name: Install yq (pinned version)
+        run: |
+          YQ_VERSION=v4.44.1
+          wget https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_amd64 -O /usr/local/bin/yq
+          chmod +x /usr/local/bin/yq
+          yq --version
+
       - name: Update image tag in values.yaml
         run: |
-          sed -i 's|tag:.*|tag: "${{ needs.docker.outputs.image_tag }}"|' helm/go-static-app/values.yaml
+          #yq e -i -y '.image.tag = "${{ needs.docker.outputs.release_tag }}"' helm/go-static-app/values.yaml
+          yq e '.image.tag = "${{ needs.docker.outputs.release_tag }}"' -i helm/go-static-app/values.yaml
 
       - name: Commit the updated values.yaml
         run: |
-          git config user.name "GHA bot"
-          git config user.email "actions@github.com"
-          git add helm/go-static-app/values.yaml
-          git commit -m "[ci] update image tag to ${{ needs.docker.outputs.image_tag }} (triggered by: ${{ github.actor }})"
-          git push
+          if ! git diff --quiet helm/go-static-app/values.yaml; then
+            git config user.name "GHA bot"
+            git config user.email "actions@github.com"
+            git add helm/go-static-app/values.yaml
+            git commit -m "[ci] update image tag to ${{ needs.docker.outputs.release_tag }} (triggered by: ${{ github.actor }})"
+            git push
+          fi
