@@ -35,7 +35,7 @@ kubectl config current-context
 If needed, update the kubeconfig:
 
 ```bash
-aws eks update-kubeconfig --name $this_cluster --region $this_region
+aws eks update-kubeconfig --name $CLUSTER_NAME --region $AWS_REGION
 ```
 
 ## 3. Deploy the Application with Helm
@@ -51,7 +51,7 @@ Install the chart:
 ```bash
 helm install go-static-app ./go-static-app \
   --create-namespace \
-  --namespace $this_namespace
+  --namespace $CLUSTER_NS
 ```
 
 To apply updates:
