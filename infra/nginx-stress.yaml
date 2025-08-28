@@ -1,0 +1,25 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx-stress
+  namespace: default
+spec:
+  replicas: 30 # 🔥 way more than a single t3.small can handle
+  selector:
+    matchLabels:
+      app: nginx-stress
+  template:
+    metadata:
+      labels:
+        app: nginx-stress
+    spec:
+      containers:
+        - name: nginx
+          image: nginx:stable
+          resources: # Force Kubernetes to request CPU/Memory
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "200m"
+              memory: "256Mi"
