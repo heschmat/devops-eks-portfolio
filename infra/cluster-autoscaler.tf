@@ -127,4 +127,7 @@ resource "helm_release" "cluster_autoscaler" {
     #file("${path.module}/cluster-autoscaler-values.yaml")
     local_file.autoscaler_values.content
   ]
+
+  wait    = true # wait for pods to be ready
+  timeout = 600  # allow up to 10 minutes
 }

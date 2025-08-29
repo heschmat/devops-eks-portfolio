@@ -78,4 +78,7 @@ resource "helm_release" "aws_lb_controller" {
       vpcId  = module.vpc.vpc_id
     })
   ]
+
+  wait    = true # wait for pods to be ready
+  timeout = 600  # allow up to 10 minutes
 }
