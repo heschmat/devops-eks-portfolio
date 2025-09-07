@@ -24,6 +24,10 @@ variable "cluster_version" {
   default = "1.32"
 }
 
+output "kubeconfig_update_command" {
+  description = "Command to update kubeconfig for this EKS cluster"
+  value       = "aws eks update-kubeconfig --name ${var.cluster_name} --region ${var.region}"
+}
 
 /*
 terraform apply \
