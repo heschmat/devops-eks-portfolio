@@ -45,3 +45,29 @@ module "eks" {
     Project = var.cluster_name
   }
 }
+
+# ++ no need as we've set: enable_cluster_creator_admin_permissions = true ++ #
+# resource "aws_eks_access_entry" "devninja" {
+#   cluster_name  = module.eks.cluster_name
+#   principal_arn = "arn:aws:iam::183056140671:user/devninja"
+#   type          = "STANDARD"
+# }
+
+resource "aws_eks_access_policy_association" "cluster_admin" {
+  cluster_name = module.eks.cluster_name
+  #principal_arn = aws_eks_access_entry.devninja.principal_arn
+
+  # principal_arn = "arn:aws:iam::183056140671:user/devninja"
+  principal_arn = var.eks_admin_principal_arn
+
+  policy_arn = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy"
+  access_scope {
+    type = "cluster"
+  }
+}
+
+# Wait a few seconds for RBAC to propagate
+resource "time_sleep" "wait_for_rbac" {
+  depends_on      = [aws_eks_access_policy_association.cluster_admin]
+  create_duration = "15s" # adjust if needed
+}

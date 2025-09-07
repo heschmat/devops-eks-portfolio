@@ -23,3 +23,18 @@ variable "cluster_version" {
   # pick a supported version for your region
   default = "1.32"
 }
+
+
+/*
+terraform apply \
+  -var="eks_admin_principal_arn=arn:aws:iam::183056140671:user/devninja"
+
+# or:
+export TF_VAR_eks_admin_principal_arn="arn:aws:iam::183056140671:user/devninja"
+
+N.B. source .env won't work!
+*/
+variable "eks_admin_principal_arn" {
+  type        = string
+  description = "IAM user or role ARN to be granted cluster admin via EKS Access Policy"
+}
