@@ -1,3 +1,13 @@
+variable "tags" {
+  type = map(string)
+  default = {
+    Project     = "static-go-app"
+    Environment = "dev"
+    Owner       = "team-ninjas"
+    CostCenter  = "1234"
+  }
+}
+
 variable "region" {
   type    = string
   default = "us-east-1"

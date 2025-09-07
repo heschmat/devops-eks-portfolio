@@ -5,7 +5,9 @@ module "vpc" {
   name = "${var.cluster_name}-vpc"
   cidr = "10.0.0.0/16"
 
-  azs = ["${var.region}a", "${var.region}b"]
+  #  azs = ["${var.region}a", "${var.region}b"]
+  azs = slice(data.aws_availability_zones.available.names, 0, 2)
+
   # for internet-facing resources (e.g., load balancers)
   public_subnets = ["10.0.0.0/19", "10.0.32.0/19"]
   # for internal resources (e.g., EC2 instances, EKS worker nodes)
@@ -26,9 +28,7 @@ module "vpc" {
     "kubernetes.io/role/internal-elb" = "1"
   }
 
-  tags = {
-    Project = var.cluster_name
-  }
+  tags = var.tags
 }
 
 /*
