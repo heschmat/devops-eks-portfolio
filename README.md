@@ -1,136 +1,143 @@
-# DevOps Portfolio Project: Go Static App Deployment
+# 🚀 DevOps EKS Portfolio
 
-![CI/CD](https://img.shields.io/github/actions/workflow/status/heschmat/devops_eks_portfolio/cicd.yml?branch=main)
-![License](https://img.shields.io/github/license/heschmat/devops_eks_portfolio)
+![Terraform](https://img.shields.io/badge/IaC-Terraform-blueviolet)
+![AWS](https://img.shields.io/badge/Cloud-AWS-orange)
+![Kubernetes](https://img.shields.io/badge/Orchestration-Kubernetes-blue)
+![ArgoCD](https://img.shields.io/badge/GitOps-ArgoCD-red)
+![CI/CD](https://img.shields.io/badge/CI%2FCD-GitHub%20Actions-green)
 
-## Overview
+## 📖 Overview
 
-This project demonstrates a complete DevOps workflow by deploying a simple static Go application with three pages using Docker, Kubernetes, GitHub Actions, and Argo CD on Amazon EKS. It reflects production-grade practices including secure containerization, CI/CD automation, and GitOps deployment.
+This repository demonstrates a **production-grade DevOps pipeline** for deploying a containerized Go application onto **Amazon EKS**, using **Terraform** for Infrastructure as Code, **GitOps (Argo CD)** for deployments, and **Kubernetes add-ons** like Cluster Autoscaler and AWS Load Balancer Controller.
 
----
+It showcases end-to-end automation:
 
-## 🔧 Tech Stack
+* **Provisioning** cloud infrastructure (VPC, subnets, EKS, IAM roles)
+* **Deploying** workloads with Helm and GitOps
+* **Scaling** clusters automatically
+* **Exposing** services via AWS ALB
+* **Managing** deployments with ArgoCD
 
-* **Language:** Go (static site)
-* **Containerization:** Docker, Multi-stage builds, Distroless base image
-* **CI/CD:** GitHub Actions, Grivy for image scanning
-* **Orchestration:** Kubernetes (KinD for local, EKS for production)
-* **Package Management:** Helm
-* **GitOps:** Argo CD
-* **Cloud Provider:** AWS (EKS, IAM, OIDC)
-
----
-
-## 🚀 DevOps Workflow
-
-### 1. Local Development
-
-* `Dockerfile.dev` and `docker-compose.yaml` for development setup
-* Run, build, test the app locally with port forwarding
-
-### 2. Production Image
-
-* Multi-stage Dockerfile ending with **distroless image** for security & minimal size
-* Built and pushed to `ghcr.io`
-
-### 3. Kubernetes Manifests
-
-* Raw manifests created with attention to:
-
-  * Namespace isolation
-  * Correct `containerPort`, `targetPort`, selectors
-  * `imagePullSecrets` for private registry access
-
-### 4. KinD Testing
-
-* Validate manifest correctness in a KinD cluster
-* Debug deployment issues locally before cloud rollout
-
-### 5. Helm Chart
-
-* Created a Helm chart for easy installation and upgrades
-
-### 6. EKS Deployment
-
-* Created an EKS cluster using `eksctl`
-* Deployed the app via Helm to a dedicated namespace
-
-### 7. Ingress & Load Balancing
-
-* Configured ALB Ingress Controller with:
-
-  * OIDC provider
-  * IAM role for controller
-  * Helm-based ALB installation
-* Verified external access via ALB
-
-### 8. GitHub Actions CI/CD
-
-Jobs include:
-
-* ✅ Unit Testing
-* ✅ Static Code Analysis
-* ✅ Docker Build, Scan (Grivy), and Push to GHCR
-* ✅ `values.yaml` image tag update and push to GH for Argo CD sync
-
-### 9. GitOps with Argo CD
-
-* Deployed Argo CD to EKS
-* Continuous deployment triggered by changes in Helm values
+This project highlights modern **DevOps + Cloud Native practices**: IaC, GitOps, CI/CD, Observability, and Scalability.
 
 ---
 
-## 📈 Next Steps
-
-* **Infrastructure as Code (IaC):** Replacing `eksctl` setup with **Terraform** for EKS and AWS resources
-* **Observability:** Integrate **Prometheus + Grafana** for monitoring, custom metrics, and dashboards
-
----
-
-## 📂 Repository Structure
+## 🏗️ Architecture
 
 ```
-.
-├── Helm/                   # Helm chart
-├── .github/workflows/      # GitHub Actions CI/CD
-├── Dockerfile              # Production image (distroless)
-├── Dockerfile.dev          # Dev image
-├── docker-compose.yaml     # Local development setup
-├── k8s/manifests/          # K8s namespace, service, deployment, ingress
-└── README.md
++------------------------------------------------------------+
+|                        VPC (10.0.0.0/16)                   |
+|                                                            |
+|   🌐 Internet Gateway (IGW)                                |
+|                |                                           |
+|   +----------------------+    +----------------------+     |
+|   | Public Subnet A      |    | Public Subnet B      |     |
+|   | (10.0.0.0/19)        |    | (10.0.32.0/19)       |     |
+|   | Load Balancers (ALB) |    | Load Balancers (ALB) |     |
+|   +----------------------+    +----------------------+     |
+|                |                       |                   |
+|                +-----------+-----------+                   |
+|                            |                               |
+|                      🔄 NAT Gateway                        |
+|                            |                               |
+|   +----------------------+    +----------------------+     |
+|   | Private Subnet A     |    | Private Subnet B     |     |
+|   | (10.0.64.0/19)       |    | (10.0.96.0/19)       |     |
+|   | EKS Worker Nodes     |    | EKS Worker Nodes     |     |
+|   +----------------------+    +----------------------+     |
+|                                                            |
++------------------------------------------------------------+
 ```
 
+Components:
+
+* **VPC + Subnets** (Terraform `vpc.tf`)
+* **EKS Cluster + Node Groups** (Terraform `eks.tf`)
+* **IAM Roles for Service Accounts** (IRSA for Autoscaler & ALB Controller)
+* **Cluster Autoscaler** (Helm chart)
+* **AWS Load Balancer Controller** (Helm chart)
+* **Argo CD** (GitOps controller for app deployments)
+
 ---
 
-## 📸 Screenshots
+## ⚙️ Tools & Technologies
 
-> @TODO: Add screenshots of the app UI, Argo CD dashboard, GitHub Actions runs, or Prometheus graphs.
+* **Terraform** → Infrastructure as Code (VPC, EKS, IAM, etc.)
+* **AWS EKS** → Managed Kubernetes control plane
+* **Helm** → Kubernetes package management
+* **Argo CD** → GitOps-based Continuous Delivery
+* **Cluster Autoscaler** → Dynamic scaling of worker nodes
+* **AWS Load Balancer Controller** → ALB/NLB for Kubernetes Ingress
+* **GitHub Actions** → CI/CD pipeline automation
 
 ---
 
-## 🌐 Access
+## 🚀 Getting Started
 
-Once deployed on EKS:
+### 1️⃣ Prerequisites
+
+* AWS CLI v2 installed & configured
+* Terraform >= 1.13.0
+* kubectl >= 1.32
+* helm >= 3.0
+
+### 2️⃣ Clone the Repo
 
 ```bash
-kubectl get svc -n <namespace>
-kubectl get nodes -o wide
+git clone https://github.com/heschmat/devops-eks-portfolio.git
+cd devops-eks-portfolio
 ```
 
-App should be reachable at `http://<node_public_ip>:<node_port>` or via **ALB DNS** after Ingress is configured.
+### 3️⃣ Deploy the Infrastructure
+
+```bash
+terraform init
+terraform apply -var="eks_admin_principal_arn=arn:aws:iam::<account_id>:user/<username>"
+```
+
+This provisions:
+
+* VPC with public/private subnets
+* EKS cluster with managed node groups
+* IAM roles for autoscaler + ALB
+
+### 4️⃣ Update kubeconfig
+
+```bash
+aws eks update-kubeconfig --name static-go-app --region us-east-1
+```
+
+### 5️⃣ Deploy Add-ons
+
+Terraform will install via Helm:
+
+* Cluster Autoscaler
+* AWS Load Balancer Controller
+* Argo CD
 
 ---
 
-## 🧠 Learning Outcomes
+## 📦 CI/CD Pipeline
 
-* End-to-end DevOps lifecycle
-* CI/CD and GitOps integration
-* Secure container builds
-* AWS IAM, OIDC, EKS, ALB experience
-* Helm templating and best practices
+* **GitHub Actions** pipeline builds & pushes Docker images to ghcr.io
+* Argo CD pulls manifests from GitHub and deploys to EKS.
+* Autoscaler adjusts worker nodes based on workload.
+* ALB exposes services externally.
 
 ---
 
-## 📃 License
+## 📊 Future Enhancements
 
-[MIT](./LICENSE)
+* 🔐 **DevSecOps**: Add security scanning (Trivy, Snyk).
+* 📈 **Observability**: Add Prometheus + Grafana dashboards.
+* 🤖 **AI/Ops**: Experiment with AI-driven anomaly detection & auto-remediation.
+* 🌍 **Multi-cloud**: Extend Terraform to Azure/GCP for hybrid workloads!!!
+
+---
+
+## 👤 Author
+
+**Heschmat**
+DevOps Engineer | Cloud | Kubernetes | Terraform | GitOps
+
+📫 Connect with me: [LinkedIn](https://www.linkedin.comheschmat/) | [GitHub](https://github.com/heschmat)
